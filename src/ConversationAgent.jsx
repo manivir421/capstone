@@ -21,6 +21,10 @@ export default function ConversationAgent({ draft, refresh }) {
   const [showRegenerateButton, setShowRegenerateButton] = useState(false);
   const [guidedStep, setGuidedStep] = useState(0);
   const chatEndRef = useRef(null);
+  const [reviewResult, setReviewResult] = useState(null);
+const [reviewLoading, setReviewLoading] = useState(false);
+const [completionMessageShown, setCompletionMessageShown] = useState(false);
+const [approving, setApproving] = useState(false);
 
   // ---------------- Sync primitive when draft changes ----------------
   useEffect(() => {
@@ -36,28 +40,32 @@ export default function ConversationAgent({ draft, refresh }) {
     scrollToBottom();
   };
 
-  useEffect(() => {
-    const fields = missingFields();
+useEffect(() => {
+  const fields = missingFields();
 
-    // Only show guided-step suggestions
-    if (fields.length > 0 && guidedStep < fields.length) {
-      const field = fields[guidedStep];
-      const suggestion = draft?.enhanced_primitive?.[field] || "";
+  // Only show guided-step suggestions
+  if (fields.length > 0 && guidedStep < fields.length) {
+    const field = fields[guidedStep];
+    const suggestion = draft?.enhanced_primitive?.[field] || "";
 
-      appendMessage(
-        "assistant",
-        `Field "${field}" is missing. Suggested: "${suggestion}"`
-      );
-    }
+    appendMessage(
+      "assistant",
+      `Field "${field}" is missing. Suggested: "${suggestion}"`
+    );
+  }
 
-    // Show completion message only once
-    if (fields.length === 0 && messages[messages.length - 1]?.role !== "assistant") {
-      appendMessage(
-        "assistant",
-        `All required fields are complete.\n\nDo you want to make any further changes or approve?`
-      );
-    }
-  }, [guidedStep, primitive]);
+  // Show completion message only once
+  if (
+    fields.length === 0 &&
+    !completionMessageShown // <-- check if we've already shown it
+  ) {
+    appendMessage(
+      "assistant",
+      `All required fields are complete.\n\nDo you want to make any further changes or approve?`
+    );
+    setCompletionMessageShown(true); // <-- mark as shown
+  }
+}, [guidedStep, primitive, completionMessageShown]);
 
   // ---------------- Accept / Skip ----------------
   const savePrimitiveDraft = async (updated) => {
@@ -143,6 +151,10 @@ export default function ConversationAgent({ draft, refresh }) {
 
   // ---------------- Approve Primitive ----------------
   const handleApprove = async () => {
+      if (approving) return;           
+  setApproving(true);               
+
+
     try {
       if (!draft.primitive_id) {
         appendMessage("assistant", "Cannot approve: primitive_id missing in draft.");
@@ -167,7 +179,8 @@ export default function ConversationAgent({ draft, refresh }) {
 
       const { error: workflowError } = await supabase
         .from("draft_scripts")
-        .update({ workflow_state: "video_ready" })
+        .update({ workflow_state: "video_ready",  script_status: "approved",
+  primitive_status: "approved" })
         .eq("id", draft.id);
 
       if (workflowError) {
@@ -181,6 +194,8 @@ export default function ConversationAgent({ draft, refresh }) {
     } catch (err) {
       appendMessage("assistant", `Approval failed: ${err.message}`);
       console.error("handleApprove error:", err);
+    } finally {
+      setApproving(true);
     }
   };
 
@@ -235,7 +250,7 @@ export default function ConversationAgent({ draft, refresh }) {
 
       const { error: updateError } = await supabase
         .from("primitives")
-        .update({ final_script: data.script })
+        .update({ final_script: data.script, user_id: draft.user_id })
         .eq("script_id", scriptId);
 
       if (updateError) {
@@ -253,13 +268,65 @@ export default function ConversationAgent({ draft, refresh }) {
     }
   };
 
+  const handleRunReview = async () => {
+  if (!regeneratedScript) return;
+
+  setReviewLoading(true);
+  setReviewResult(null);
+
+  try {
+    const { data: primData } = await supabase
+      .from("primitives")
+      .select("primitive_json")
+      .eq("script_id", draft.primitive_id)
+      .maybeSingle();
+
+    if (!primData?.primitive_json) {
+      appendMessage("assistant", "Primitive data not found.");
+      return;
+    }
+
+    const res = await fetch(
+      "https://javlnpnawmfpypapauyc.supabase.co/functions/v1/hyper-service",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          primitive: primData.primitive_json,
+          script: regeneratedScript,
+        }),
+      }
+    );
+
+   if (!res.ok) {
+  const errorText = await res.text();
+  console.error("Hyper-service error:", errorText);
+
+  appendMessage(
+    "assistant",
+    `Script review failed.\n\nServer response:\n${errorText}`
+  );
+
+  return;
+}
+
+    const data = await res.json();
+    setReviewResult(data);
+
+  } catch (err) {
+    appendMessage("assistant", "Review failed.");
+  } finally {
+    setReviewLoading(false);
+  }
+};
+
   // ---------------- Approve Regenerated Script ----------------
  const handleApproveRegeneratedScript = async () => {
   if (!regeneratedScript) return;
 
   const { error: updateError } = await supabase
     .from("primitives")
-    .update({ approved_script: regeneratedScript })
+    .update({ approved_script: regeneratedScript, user_id: draft.user_id })
     .eq("script_id", draft.primitive_id);
 
   if (updateError) {
@@ -297,7 +364,7 @@ export default function ConversationAgent({ draft, refresh }) {
             <button className="secondary-btn" onClick={handleSkip}>Skip</button>
           </>
         )}
-        <button className="primary-btn" onClick={handleApprove}>Approve</button>
+        <button className="primary-btn" onClick={handleApprove} disabled={approving}>{approving ? "Approved" : "Approve"}</button>
       </div>
 
       <textarea
@@ -306,7 +373,7 @@ export default function ConversationAgent({ draft, refresh }) {
         onChange={(e) => setInput(e.target.value)}
         placeholder='Type instructions or edits...'
       />
-      <button onClick={() => handleUserInput(input)} disabled={loading}>
+      <button onClick={() => handleUserInput(input)} disabled={loading || approving}>
         {loading ? "Processing..." : "Send"}
       </button>
 
@@ -316,19 +383,55 @@ export default function ConversationAgent({ draft, refresh }) {
         </button>
       )}
 
-      {regeneratedScript && (
-        <div className="regenerated-script">
-          <h4>Regenerated Script Preview</h4>
-          <textarea
-            rows={8}
-            value={regeneratedScript}
-            onChange={(e) => setRegeneratedScript(e.target.value)}
-          />
-          <button onClick={handleApproveRegeneratedScript}>
-            Approve Regenerated Script
-          </button>
-        </div>
-      )}
+    {regeneratedScript && (
+  <div className="regenerated-script">
+    <h4>Regenerated Script Preview</h4>
+
+    <textarea
+      rows={8}
+      value={regeneratedScript}
+      onChange={(e) => setRegeneratedScript(e.target.value)}
+    />
+
+    {!reviewResult && (
+      <button
+        className="secondary-btn"
+        onClick={handleRunReview}
+        disabled={reviewLoading}
+      >
+        {reviewLoading ? "Running Review..." : "Run Clarification Check"}
+      </button>
+    )}
+{reviewResult && (
+  <div className="review-results">
+    <h4>Clarification Check</h4>
+
+    {Object.values(reviewResult).every(items => !items || items.length === 0) ? (
+      <p>No clarification issues found.</p>
+    ) : (
+      Object.entries(reviewResult).map(([category, items]) => {
+        const safeItems = Array.isArray(items) ? items : [];
+        if (safeItems.length === 0) return null; // skip empty categories
+        return (
+          <div key={category}>
+            <strong>{category.replace(/_/g, " ").toUpperCase()}</strong>
+            <ul>
+              {safeItems.map((item, i) => (
+                <li key={i}>{item}</li>
+              ))}
+            </ul>
+          </div>
+        );
+      })
+    )}
+  </div>
+)}
+
+    <button onClick={handleApproveRegeneratedScript}>
+      Approve Regenerated Script
+    </button>
+  </div>
+)}
     </div>
   );
 }

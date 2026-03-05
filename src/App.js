@@ -41,6 +41,7 @@ function App() {
       .from("draft_scripts")
       .select("*")
       .eq("user_id", user.id)
+      
       .order("created_at", { ascending: false });
 
     if (error) console.error("Error fetching drafts:", error);
@@ -67,6 +68,7 @@ function App() {
       .select("*")
       .eq("user_id", user.id) 
       .not("approved_script", "is", null)
+      .neq("approved_script", "") 
       .order("updated_at", { ascending: false });
 
     if (error) console.error("Error fetching approved scripts:", error);
@@ -153,14 +155,15 @@ function App() {
       const newDraft = newDraftArray?.[0];
       if (!newDraft) return alert("Draft creation failed");
 
-      await supabase.from("primitives").insert({
+     /* await supabase.from("primitives").insert({
         script_id: checklist.id,
         final_script: "",
         approved_script: "",
-      });
+        user_id: user.id, 
+      }); */
 
       await fetchDrafts();
-      setActiveDraft(newDraft);
+      
       setFile(null);
       alert("Script and primitive draft generated successfully.");
     } catch (err) {
@@ -295,7 +298,7 @@ function App() {
           <div className="card upload-section">
             <h3>Upload Checklist</h3>
             <input type="file" onChange={(e) => setFile(e.target.files[0])} />
-            <button className="primary-btn" onClick={uploadFileToBucket}>Upload</button>
+            
             <button className="primary-btn" onClick={generateScript}>Generate Script</button>
           </div>
 
@@ -307,19 +310,13 @@ function App() {
               <div key={d.id} className="draft-card">
                 
                 <p><strong>Script Status:</strong> {d.script_status}</p>
+                <p><strong>Checklist ID:</strong> {d.primitive_id}</p>
                 <p>{d.script_text}</p>
                 <button className="secondary-btn" onClick={() => toggleDraft(d)}>
                   {activeDraft?.id === d.id ? "Close Draft" : "Open Draft"}
                 </button>
-                {d.video_status === "generated" && <span className="video-generated"> Video Generated</span>}
-                {d.workflow_state === "video_ready" && d.video_status !== "generated" && <span className="video-ready">Video Ready</span>}
-                <button
-                  disabled={d.video_status === "generated" || d.workflow_state !== "video_ready"}
-                  className="primary-btn"
-                  onClick={() => generateVideoForScript(d)}
-                >
-                  Generate Video
-                </button>
+                
+               
               </div>
             ))}
           </div>
@@ -330,6 +327,7 @@ function App() {
           {/* Active Draft Panel */}
           {activeDraft && (
             <div className="active-draft-panel">
+              <h4>Checklist/Primitive ID: {activeDraft.primitive_id}</h4> 
               <div className="card primitive-panel">
                 <h3>Original Primitive</h3>
                 <pre>{JSON.stringify(activeDraft.primitive_draft, null, 2)}</pre>
@@ -337,7 +335,12 @@ function App() {
 
               <div className="card enhanced-panel">
                 <h3>Enhanced Primitive</h3>
-                <pre>{JSON.stringify(activeDraft.enhanced_primitive, null, 2)}</pre>
+               <pre>
+{JSON.stringify(activeDraft.enhanced_primitive, (key, value) => {
+    if (Array.isArray(value)) return value.join('\n - ');
+    return value;
+}, 2)}
+</pre>
               </div>
 
               {!activeDraft.chatStarted && (
