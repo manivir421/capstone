@@ -170,6 +170,7 @@ useEffect(() => {
         .insert({
           script_id: draft.primitive_id,
           primitive_json: primitive,
+          user_id: draft.user_id
         });
 
       if (error) {
@@ -337,7 +338,7 @@ useEffect(() => {
   appendMessage("assistant", "Regenerated script approved.");
 
   // Pass the approved script to parent so it updates the list immediately
-  refresh(draft.id, { ...draft, approved_script: regeneratedScript });
+refresh(draft.id);
 
   // Clear local regenerated script state
   setRegeneratedScript("");

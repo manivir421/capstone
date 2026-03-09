@@ -13,6 +13,8 @@ function App() {
   const [videoLoadingIds, setVideoLoadingIds] = useState([]);
   const [activeDraft, setActiveDraft] = useState(null);
   const [approvedScripts, setApprovedScripts] = useState([]);
+  const [showApprovedModal, setShowApprovedModal] = useState(false);
+  const [voiceTranscript, setVoiceTranscript] = useState("");
 
   // -------------------------------
   // Auth Session
@@ -40,6 +42,7 @@ function App() {
     const { data, error } = await supabase
       .from("draft_scripts")
       .select("*")
+      .eq("primitive_status", "draft")
       .eq("user_id", user.id)
       
       .order("created_at", { ascending: false });
@@ -67,12 +70,14 @@ function App() {
       .from("primitives")
       .select("*")
       .eq("user_id", user.id) 
-      .not("approved_script", "is", null)
-      .neq("approved_script", "") 
-      .order("updated_at", { ascending: false });
+      .not("approved_script", "is", null)   // exclude null
+      .neq("approved_script", "")         
+      .order("created_at", { ascending: false });
 
     if (error) console.error("Error fetching approved scripts:", error);
-    else setApprovedScripts(data || []);
+    else {
+      console.log("Approved scripts from DB:", data);
+      setApprovedScripts(data || []);}
   };
 
   useEffect(() => {
@@ -172,35 +177,6 @@ function App() {
     }
   };
 
-  // -------------------------------
-  // Video Generation
-  // -------------------------------
-  const generateVideoForScript = async (draft) => {
-    if (draft.workflow_state !== "video_ready")
-      return alert("Script must be fully approved first.");
-
-    setVideoLoadingIds((prev) => [...prev, draft.id]);
-
-    const res = await fetch(
-      "https://javlnpnawmfpypapauyc.supabase.co/functions/v1/dynamic-processor",
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ draftId: draft.id }),
-      }
-    );
-
-    const { videoUrl } = await res.json();
-
-    await supabase
-      .from("draft_scripts")
-      .update({ video_url: videoUrl, video_status: "generated" })
-      .eq("id", draft.id);
-
-    setVideoLoadingIds((prev) => prev.filter((id) => id !== draft.id));
-    fetchDrafts();
-    alert("Video generated!");
-  };
 
   // -------------------------------
   // Toggle Draft + Enhance Primitive
@@ -273,6 +249,127 @@ function App() {
       setActiveDraft(latestDraft);
     }
   };
+
+  // --------------------
+// ApprovedScriptCard Component
+// --------------------
+function ApprovedScriptCard({ script, user }) {
+  const [showHistory, setShowHistory] = useState(false);
+  const [history, setHistory] = useState(null);
+
+  const fetchHistory = async () => {
+    if (history) return setShowHistory((prev) => !prev); // toggle if already fetched
+
+    try {
+      const { data: draftData } = await supabase
+        .from("draft_scripts")
+        .select("primitive_draft, enhanced_primitive")
+        .eq("user_id", user.id)
+        .eq("primitive_id", script.script_id)
+        .maybeSingle();
+
+      const { data: primData } = await supabase
+        .from("primitives")
+        .select("final_script, approved_script")
+        .eq("user_id", user.id)
+        .eq("script_id", script.script_id)
+        .maybeSingle();
+
+      setHistory({
+        draft: draftData || {},
+        primitive: primData || {},
+      });
+      setShowHistory(true);
+    } catch (err) {
+      console.error("Error fetching history:", err);
+      alert("Failed to fetch history");
+    }
+  };
+
+  return (
+    <div className="approved-script-card">
+      <h4>Checklist ID: {script.script_id}</h4>
+      <pre className="script-content">{script.approved_script}</pre>
+
+      <button className="primary-btn" onClick={fetchHistory}>
+        {showHistory ? "Hide History" : "View History"}
+      </button>
+
+      {showHistory && history && (
+        <div className="history-panel">
+          <h5>Draft Scripts</h5>
+          <div className="card">
+            <strong>Primitive Draft:</strong>
+            <pre>{JSON.stringify(history.draft.primitive_draft, null, 2)}</pre>
+            <strong>Enhanced Primitive:</strong>
+            <pre>{JSON.stringify(history.draft.enhanced_primitive, null, 2)}</pre>
+          </div>
+
+          <h5>Primitives Table</h5>
+          <div className="card">
+            <strong>Final Script:</strong>
+            <pre>{history.primitive.final_script}</pre>
+            <strong>Approved Script:</strong>
+            <pre>{history.primitive.approved_script}</pre>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Inside App component, above `return ( ... )`
+function VoiceInputCard({ voiceTranscript, setVoiceTranscript }) {
+  const [recording, setRecording] = useState(false);
+
+  const startRecording = async () => {
+    setRecording(true);
+    // call your edge function or Web API to start recording
+    console.log("Recording started...");
+  };
+
+  const stopRecording = async () => {
+    setRecording(false);
+    // call edge function to transcribe
+    // then setVoiceTranscript(transcribedText)
+    console.log("Recording stopped and transcribing...");
+  };
+
+  return (
+    <div className="voice-input-card card">
+      <h3>Want to switch to Voice? Hit the button below to start recording!</h3>
+      <button
+        className="primary-btn"
+        onClick={recording ? stopRecording : startRecording}
+      >
+        {recording ? "Stop Recording" : "Start Recording"}
+      </button>
+
+      {voiceTranscript && (
+        <>
+          <textarea
+            value={voiceTranscript}
+            onChange={(e) => setVoiceTranscript(e.target.value)}
+            rows={4}
+            placeholder="Edit your transcription here..."
+          />
+          <button
+            className="primary-btn"
+            onClick={() => {
+              // Prefill chat input in activeDraft
+              setActiveDraft(prev =>
+                prev ? { ...prev, chatInputText: voiceTranscript, chatStarted: true } : prev
+              );
+              setVoiceTranscript(""); // clear after sending
+            }}
+          >
+            Send to Chat
+          </button>
+        </>
+      )}
+    </div>
+  );
+}
 
   // -------------------------------
   // Rendering
@@ -373,22 +470,46 @@ function App() {
               )}
             </div>
           )}
-
+  {/* Voice Input Card */}
+  {activeDraft && (
+    <VoiceInputCard
+      voiceTranscript={voiceTranscript}
+      setVoiceTranscript={setVoiceTranscript}
+    />
+  )}
          {/* Approved Scripts */}
-<div className="approved-scripts">
-  <h3>Approved Scripts</h3>
-  {approvedScripts.length === 0 && <p>No approved scripts yet.</p>}
-  {approvedScripts.map((d) => (
-    <div key={d.id} className="approved-script-card">
-      <h4>{d.script_text?.slice(0, 30) || "Approved Script"}...</h4>
-      <pre className="script-content">{d.approved_script}</pre>
-    </div>
-  ))}
-</div>
+{/* Button to open approved scripts modal */}
+<button
+  className="view-btn"
+  onClick={() => setShowApprovedModal(true)}
+>
+  View Approved Scripts
+</button>
 
-          {!activeDraft && approvedScripts.length === 0 && (
-            <p>Select a draft to view details and start conversation.</p>
-          )}
+{/* Modal / Blanket */}
+{showApprovedModal && (
+  <div className="approved-modal">
+  <div className="modal-content">
+    <div className="modal-header">
+      <h3>Approved Scripts</h3>
+      <button
+        className="close-btn"
+        onClick={() => setShowApprovedModal(false)}
+      >
+        Close
+      </button>
+    </div>
+    <div className="modal-body">
+      <div className="approved-scripts-list">
+        {approvedScripts.length === 0 && <p>No approved scripts yet.</p>}
+        {approvedScripts.map((d) => (
+          <ApprovedScriptCard key={d.id} script={d} user={user} />
+        ))}
+      </div>
+    </div>
+  </div>
+</div>
+)}
         </div>
       </div>
     </div>
