@@ -16,9 +16,9 @@ function App() {
   const [showApprovedModal, setShowApprovedModal] = useState(false);
   const [voiceTranscript, setVoiceTranscript] = useState("");
 
-  // -------------------------------
+
   // Auth Session
-  // -------------------------------
+
   useEffect(() => {
     const fetchSession = async () => {
       const { data } = await supabase.auth.getSession();
@@ -34,9 +34,9 @@ function App() {
     return () => listener.subscription.unsubscribe();
   }, []);
 
-  // -------------------------------
+  
   // Fetch Drafts
-  // -------------------------------
+
   const fetchDrafts = async (removeDraftId = null) => {
     if (!user) return;
     const { data, error } = await supabase
@@ -61,16 +61,16 @@ function App() {
     fetchDrafts();
   }, [user]);
 
-  // -------------------------------
+ 
   // Fetch Approved Scripts
-  // -------------------------------
+  
   const fetchApprovedScripts = async () => {
     if (!user) return;
     const { data, error } = await supabase
       .from("primitives")
       .select("*")
       .eq("user_id", user.id) 
-      .not("approved_script", "is", null)   // exclude null
+      .not("approved_script", "is", null)   
       .neq("approved_script", "")         
       .order("created_at", { ascending: false });
 
@@ -84,9 +84,9 @@ function App() {
     fetchApprovedScripts();
   }, [user]);
 
-  // -------------------------------
+
   // Upload File
-  // -------------------------------
+
   const uploadFileToBucket = async () => {
     if (!file) return alert("Select a file first");
 
@@ -108,9 +108,9 @@ function App() {
     return checklist;
   };
 
-  // -------------------------------
+ 
   // Generate Script + Primitive Draft
-  // -------------------------------
+
   const generateScript = async () => {
     if (!file) return alert("Select checklist first");
 
@@ -160,12 +160,6 @@ function App() {
       const newDraft = newDraftArray?.[0];
       if (!newDraft) return alert("Draft creation failed");
 
-     /* await supabase.from("primitives").insert({
-        script_id: checklist.id,
-        final_script: "",
-        approved_script: "",
-        user_id: user.id, 
-      }); */
 
       await fetchDrafts();
       
@@ -178,9 +172,8 @@ function App() {
   };
 
 
-  // -------------------------------
   // Toggle Draft + Enhance Primitive
-  // -------------------------------
+
   const toggleDraft = async (draft) => {
     if (activeDraft?.id === draft.id) {
       setActiveDraft(null);
@@ -250,15 +243,15 @@ function App() {
     }
   };
 
-  // --------------------
+
 // ApprovedScriptCard Component
-// --------------------
+
 function ApprovedScriptCard({ script, user }) {
   const [showHistory, setShowHistory] = useState(false);
   const [history, setHistory] = useState(null);
 
   const fetchHistory = async () => {
-    if (history) return setShowHistory((prev) => !prev); // toggle if already fetched
+    if (history) return setShowHistory((prev) => !prev); 
 
     try {
       const { data: draftData } = await supabase
@@ -318,20 +311,19 @@ function ApprovedScriptCard({ script, user }) {
   );
 }
 
-// Inside App component, above `return ( ... )`
+
 function VoiceInputCard({ voiceTranscript, setVoiceTranscript }) {
   const [recording, setRecording] = useState(false);
 
   const startRecording = async () => {
     setRecording(true);
-    // call your edge function or Web API to start recording
+    
     console.log("Recording started...");
   };
 
   const stopRecording = async () => {
     setRecording(false);
-    // call edge function to transcribe
-    // then setVoiceTranscript(transcribedText)
+
     console.log("Recording stopped and transcribing...");
   };
 
@@ -356,11 +348,11 @@ function VoiceInputCard({ voiceTranscript, setVoiceTranscript }) {
           <button
             className="primary-btn"
             onClick={() => {
-              // Prefill chat input in activeDraft
+            
               setActiveDraft(prev =>
                 prev ? { ...prev, chatInputText: voiceTranscript, chatStarted: true } : prev
               );
-              setVoiceTranscript(""); // clear after sending
+              setVoiceTranscript(""); 
             }}
           >
             Send to Chat
@@ -371,9 +363,9 @@ function VoiceInputCard({ voiceTranscript, setVoiceTranscript }) {
   );
 }
 
-  // -------------------------------
+
   // Rendering
-  // -------------------------------
+
   if (loading) return <div>Loading...</div>;
   if (!user) return <Auth setUser={setUser} />;
 
@@ -453,17 +445,17 @@ function VoiceInputCard({ voiceTranscript, setVoiceTranscript }) {
   <ConversationAgent
     draft={activeDraft}
     refresh={(removeDraftId, newApprovedScript = null) => {
-      // Remove the draft from the list
+     
       fetchDrafts(removeDraftId);
 
-      // Add to approved scripts if provided
+
       if (newApprovedScript) {
         setApprovedScripts(prev => [newApprovedScript, ...prev]);
       } else {
         fetchApprovedScripts();
       }
 
-      // Clear the active draft if it was the one approved
+
       setActiveDraft(prev => (prev?.id === removeDraftId ? null : prev));
     }}
 />

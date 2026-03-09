@@ -11,7 +11,7 @@ const PRIMITIVE_FIELDS = [
 ];
 
 export default function ConversationAgent({ draft, refresh }) {
-  // ---------------- State ----------------
+  // State 
   const initialPrimitive = draft?.enhanced_primitive || draft?.primitive_draft || {};
   const [primitive, setPrimitive] = useState(initialPrimitive);
   const [messages, setMessages] = useState([]);
@@ -26,7 +26,7 @@ const [reviewLoading, setReviewLoading] = useState(false);
 const [completionMessageShown, setCompletionMessageShown] = useState(false);
 const [approving, setApproving] = useState(false);
 
-  // ---------------- Sync primitive when draft changes ----------------
+  // Sync primitive when draft changes 
   useEffect(() => {
     setPrimitive(draft?.enhanced_primitive || draft?.primitive_draft || {});
   }, [draft]);
@@ -43,7 +43,7 @@ const [approving, setApproving] = useState(false);
 useEffect(() => {
   const fields = missingFields();
 
-  // Only show guided-step suggestions
+ 
   if (fields.length > 0 && guidedStep < fields.length) {
     const field = fields[guidedStep];
     const suggestion = draft?.enhanced_primitive?.[field] || "";
@@ -54,20 +54,19 @@ useEffect(() => {
     );
   }
 
-  // Show completion message only once
   if (
     fields.length === 0 &&
-    !completionMessageShown // <-- check if we've already shown it
+    !completionMessageShown
   ) {
     appendMessage(
       "assistant",
       `All required fields are complete.\n\nDo you want to make any further changes or approve?`
     );
-    setCompletionMessageShown(true); // <-- mark as shown
+    setCompletionMessageShown(true); 
   }
 }, [guidedStep, primitive, completionMessageShown]);
 
-  // ---------------- Accept / Skip ----------------
+  // Accept / Skip 
   const savePrimitiveDraft = async (updated) => {
     setPrimitive(updated);
     await supabase
@@ -99,7 +98,7 @@ useEffect(() => {
     setGuidedStep((prev) => prev + 1);
   };
 
-  // ---------------- Free Text Input ----------------
+  //  Free Text Input 
   const handleUserInput = async (text) => {
     if (!text.trim()) return;
 
@@ -149,7 +148,7 @@ useEffect(() => {
     }
   };
 
-  // ---------------- Approve Primitive ----------------
+  //  Approve Primitive 
   const handleApprove = async () => {
       if (approving) return;           
   setApproving(true);               
@@ -200,7 +199,7 @@ useEffect(() => {
     }
   };
 
-  // ---------------- Regenerate Script ----------------
+  // Regenerate Script 
   const handleRegenerateScript = async () => {
     setLoading(true);
     try {
@@ -321,7 +320,7 @@ useEffect(() => {
   }
 };
 
-  // ---------------- Approve Regenerated Script ----------------
+  //  Approve Regenerated Script
  const handleApproveRegeneratedScript = async () => {
   if (!regeneratedScript) return;
 
@@ -337,16 +336,15 @@ useEffect(() => {
 
   appendMessage("assistant", "Regenerated script approved.");
 
-  // Pass the approved script to parent so it updates the list immediately
 refresh(draft.id);
 
-  // Clear local regenerated script state
+
   setRegeneratedScript("");
 
   
 };
 
-  // ---------------- Render ----------------
+  // Render 
   return (
     <div className="conversation-panel">
       <div className="messages-panel">
@@ -412,7 +410,7 @@ refresh(draft.id);
     ) : (
       Object.entries(reviewResult).map(([category, items]) => {
         const safeItems = Array.isArray(items) ? items : [];
-        if (safeItems.length === 0) return null; // skip empty categories
+        if (safeItems.length === 0) return null; 
         return (
           <div key={category}>
             <strong>{category.replace(/_/g, " ").toUpperCase()}</strong>
